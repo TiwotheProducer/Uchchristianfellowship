@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UCHCF Calvary Love Family</title>
+    <!-- Load Tailwind CSS for styling and responsiveness -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Use the Inter font, which is clean and modern */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-gray-100">
+
+    <!-- Header and Navigation will be injected here -->
+    <header id="header-container" class="sticky top-0 z-50"></header>
+
+    <!-- Main Content Area -->
+    <main id="main-content" class="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8 flex-grow w-full"></main>
+
+    <!-- Footer will be injected here -->
+    <footer id="footer-container" class="mt-16 py-8"></footer>
+
+    <!-- Application Logic -->
+    <script type="module">
+        // --- Firebase Imports ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, doc, addDoc, setDoc, deleteDoc, runTransaction, serverTimestamp, getDocs, query, where, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Global Constants and Configuration ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'uchcf-default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // --- Super Admin Identity ---
+        const SuperAdminEmail = 'tiwotheproducer@gmail.com';
+        const mockAdminEmail = 'admin@uchcf.org'; // Legacy mock admin, now part of uchcf_roles
+
+        const Colors = {
+            Red: 'bg-red-700',
+            Blue: 'bg-blue-800',
+            White: 'bg-white',
+            TextBlue: 'text-blue-800',
+            BorderBlue: 'border-blue-800',
+            AccentRed: 'text-red-700',
+        };
+        
+        const FAMILIES = ["SON FAMILY", "ABH FAMILY", "SHIM FAMILY"];
+        const PROFESSIONS = ['Health Information Manager','Doctor', 'Nurse' , 'Physio-therapist', 'Dentist', 'Anaestiesia', 'Scientist','Other Health Professional'];
+
+
+        // --- Application State Management (Replacing React useState) ---
+        let appState = {
+            activePage: 'Home',
+            db: null,
+            auth: null,
+            userId: null,
+            isAuthReady: false,
+            userRole: 'Visitor', // Visitor, Member, Admin, SuperAdmin
+            blogPosts: [],
+            draftPosts: [],
+            alumniMembers: [],
+            adminList: [], // List of UIDs who are officially Admins
+            adminRequests: [], // Requests for Admin status
+        };
+
+        // --- Core Functions for DOM Manipulation ---
+
+        // Function to update the entire UI based on state
+        function renderApp() {
+            renderHeader();
+            renderContent();
+            renderFooter();
+        }
+
+        function setActivePage(pageName) {
+            appState.activePage = pageName;
+            renderApp();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function setUserRole(role) {
+            appState.userRole = role;
+            renderApp();
+        }
+        
+        // Expose critical functions globally for onclick calls
+        window.setActivePage = setActivePage;
+        window.setUserRole = setUserRole;
+        window.signOutUser = async function() {
+            try {
+                await signOut(appState.auth);
+                // Auth state change listener will handle the rest (re-render as Visitor)
+                alert('You have been signed out.');
+            } catch (error) {
+                console.error("Sign Out Error:", error);
+            }
+        }
+
+
+        function SectionTitle(title, className = '') {
+            return `<h2 class="${Colors.TextBlue} text-3xl md:text-4xl font-extrabold mb-6 border-b-4 ${Colors.BorderBlue} inline-block pb-1 ${className}">${title}</h2>`;
+        }
+
+        function Button(text, onClickHandler, color = Colors.Red, className = '', type = 'button') {
+            return `
+                <button type="${type}" onclick="${onClickHandler}" 
+                    class="px-6 py-3 rounded-xl font-semibold text-white transition duration-300 transform hover:scale-[1.02] active:scale-95 shadow-lg ${color} ${className}">
+                    ${text}
+                </button>
+            `;
+        }
+
+        function Card(content, icon, title, border = 'border-red-700') {
+            return `
+                <div class="p-6 bg-white rounded-xl shadow-xl hover:shadow-2xl transition duration-300 border-t-4 ${border} space-y-3">
+                    ${icon ? `<div class="${Colors.AccentRed} text-4xl mb-3">${icon}</div>` : ''}
+                    ${title ? `<h3 class="text-xl font-bold ${Colors.TextBlue} mb-2">${title}</h3>` : ''}
+                    ${content}
+                </div>
+            `;
+        }
+
+        // --- PAGE CONTENT RENDER FUNCTIONS ---
+        // (Home, About Us, Mentorship, Events, Donations, Gallery, Store, Contact Us remain the same)
+        function HomePage() { /* ... */ return `<div class="space-y-16"><!-- Hero Section --><div class="p-8 md:p-12 rounded-2xl shadow-2xl ${Colors.Blue} text-white"><p class="text-sm font-medium opacity-80">UCHCF | Calvary Love Family</p><h1 class="text-4xl md:text-6xl font-black mt-2">Building the House Unto Maturity</h1><p class="mt-4 text-lg max-w-3xl font-light">To disciple and nurture students and health professionals in the University College Hospital through the Word of God, fellowship, mentorship, and evangelism.</p>${Button('Join the Family Today', "setActivePage('Login / Register')", Colors.Red, 'mt-6')}</div><!-- Dynamic Statistics Placeholder --><div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">${Card("50+", "Years of Ministry", '', 'border-blue-500').replace('p-6 bg-white', 'p-4 bg-white').replace('shadow-xl', 'shadow-lg').replace('border-t-4', 'border-b-4').replace('border-red-700', 'border-blue-500').replace('space-y-3', '').replace('🌟', '50+').replace('💫', 'Years of Ministry')}${Card("1,200+", "Global Alumni", '', 'border-blue-500').replace('p-6 bg-white', 'p-4 bg-white').replace('shadow-xl', 'shadow-lg').replace('border-t-4', 'border-b-4').replace('border-red-700', 'border-blue-500').replace('space-y-3', '').replace('🌟', '1,200+').replace('💫', 'Global Alumni')}${Card("20+", "Active Mentors", '', 'border-blue-500').replace('p-6 bg-white', 'p-4 bg-white').replace('shadow-xl', 'shadow-lg').replace('border-t-4', 'border-b-4').replace('border-red-700', 'border-blue-500').replace('space-y-3', '').replace('🌟', '20+').replace('💫', 'Active Mentors')}${Card("4", "Sub-Families", '', 'border-blue-500').replace('p-6 bg-white', 'p-4 bg-white').replace('shadow-xl', 'shadow-lg').replace('border-t-4', 'border-b-4').replace('border-red-700', 'border-blue-500').replace('space-y-3', '').replace('🌟', '4').replace('💫', 'Sub-Families')}</div><!-- Mission & Vision Snapshot --><div class="grid md:grid-cols-2 gap-8">${Card('<p class="text-gray-600">To raise a united community of Christ-like believers within the University College Hospital who demonstrate love, service, and spiritual maturity, extending the message of Christ across the hospital, campus, and beyond.</p>', '🌟', 'Our Vision')}${Card('<p class="text-gray-600">To disciple and nurture students and health professionals in UCH through the Word of God, fellowship, mentorship, and evangelism — developing them to serve effectively in their professional and spiritual callings.</p>', '💫', 'Our Mission')}</div></div>`;}
+        function AboutUsPage() { /* ... */ return `<div class="max-w-5xl mx-auto space-y-12">${SectionTitle('Our History, Identity, and Structure')}${Card('<p class="text-gray-700">Founded in <strong>1971</strong> as an interdenominational Christian Fellowship, UCHCF has served as a spiritual bedrock for students and health professionals at the University College Hospital, Ibadan. From humble beginnings, we have grown into the Calvary Love Family, committed to \'Building the House Unto Maturity\' based on the book of Colossians.</p>', null, 'Our Foundational Story', 'border-red-700')}<div class="grid md:grid-cols-2 gap-8">${Card('<p><strong>Acronym:</strong> UCHCF</p><p><strong>Alias:</strong> Calvary Love Family (CAVARILLO Family)</p><p><strong>Official Colours:</strong> Red, Blue, and White</p><p><strong>Theme:</strong> Classic, Family-like, and Warm</p>', '🕊️', 'Identity & Theme', 'border-blue-700')}${Card('<ul class="list-disc ml-5 text-gray-700 space-y-1 text-sm"><li>Promote Christian fellowship and spiritual growth.</li><li>Serve as a platform for evangelism and outreach.</li><li>Strengthen interpersonal bonds and mentorship.</li><li>Maintain a living connection among alumni.</li></ul>', '🎯', 'Core Objectives', 'border-blue-700')}</div>${Card(`<div class="grid grid-cols-2 gap-4"><p class="font-semibold ${Colors.TextBlue}">SON FAMILY:</p> <p>School of Nursing members and alumni.</p><p class="font-semibold ${Colors.TextBlue}">ABH FAMILY:</p> <p>Alexander Brown Hall residents and affiliates.</p><p class="font-semibold ${Colors.TextBlue}">SHIM FAMILY:</p> <p>School of Health Information Management members and alumni.</p></div>`, null, 'Fellowship Structure (Sub-Families)', 'border-red-700')}</div>`;}
+        function AlumniDirectoryPage() {
+            const allSets = [...new Set(appState.alumniMembers.map(m => m.set))].sort((a, b) => b - a).map(s => String(s));
+            const filteredMembers = appState.alumniMembers; // No filtering implemented yet
+
+            const AlumniMemberCard = (member) => {
+                const contactInfo = appState.userRole !== 'Visitor' ? 
+                    `<a href="https://wa.me/${member.whatsapp}" target="_blank" rel="noopener noreferrer">
+                        ${Button('Message on WhatsApp', 'console.log("Mock WhatsApp click")', 'bg-green-600', 'w-full text-sm py-2')}
+                    </a>` : 
+                    '<p class="text-xs text-center text-gray-500">Sign in to contact this member.</p>';
+
+                return `
+                    <div class="p-5 bg-white rounded-xl shadow-xl hover:shadow-2xl transition duration-300 border-t-4 border-blue-800 flex flex-col justify-between">
+                        <div>
+                            <h3 class="text-xl font-bold ${Colors.TextBlue}">${member.name}</h3>
+                            <p class="text-sm ${Colors.AccentRed} font-semibold mb-2">${member.office || 'Alumnus/Alumna'}</p>
+                            <div class="text-sm text-gray-600 space-y-1">
+                                <p>📍 ${member.school} (Set: ${member.set})</p>
+                                <p>💼 ${member.profession}</p>
+                                ${member.isMentor ? '<span class="inline-block px-3 py-1 mt-1 text-xs font-semibold text-green-800 bg-green-200 rounded-full">✅ Available Mentor</span>' : ''}
+                            </div>
+                        </div>
+
+                        <div class="mt-4 pt-4 border-t border-gray-100">
+                            ${contactInfo}
+                        </div>
+                    </div>
+                `;
+            };
+
+            const registrationForm = `
+                 <div id="alumni-register-form" class="p-6 bg-red-50 rounded-xl shadow-inner border border-red-200">
+                    <h3 class="text-xl font-bold ${Colors.AccentRed} mb-3">Register Your Alumni Profile</h3>
+                    <p class="text-sm text-gray-600 mb-4">Complete your profile to be searchable and connect with the Calvary Love Family globally. Your ID: <code class="bg-gray-200 p-1 rounded text-xs">${appState.userId}</code></p>
+                    <form onsubmit="handleAlumniRegistration(event); return false;" class="space-y-3">
+                        <input type="text" id="alumniName" placeholder="Full Name" required class="w-full p-3 border rounded-lg focus:ring-blue-500 focus:border-blue-500" />
+                        <div class="grid grid-cols-2 gap-3">
+                             <select id="alumniSchool" required class="p-3 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">Select Your Family</option>
+                                ${FAMILIES.map(f => `<option value="${f}">${f}</option>`).join('')}
+                            </select>
+                             <select id="alumniProfession" required class="p-3 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">Select Profession</option>
+                                ${PROFESSIONS.map(p => `<option value="${p}">${p}</option>`).join('')}
+                            </select>
+                        </div>
+                         <div class="grid grid-cols-2 gap-3">
+                            <input type="number" id="alumniSet" placeholder="Graduation Set (e.g., 2018)" required class="p-3 border rounded-lg focus:ring-blue-500 focus:border-blue-500" />
+                            <input type="tel" id="alumniWhatsapp" placeholder="WhatsApp Number (+234...)" required class="p-3 border rounded-lg focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="checkbox" id="isMentor" class="rounded text-red-700 focus:ring-red-700" />
+                            <label for="isMentor" class="text-sm text-gray-700">I am available to be a Mentor</label>
+                        </div>
+                        ${Button('Submit Profile', '', Colors.Blue, 'w-full', 'submit')}
+                    </form>
+                </div>
+            `;
+
+
+            return `
+                <div class="max-w-6xl mx-auto space-y-10">
+                    ${SectionTitle('Alumni & Professional Directory')}
+                    
+                    ${appState.userRole !== 'Visitor' ? registrationForm : ''}
+                    
+                    <div class="bg-blue-50 p-6 rounded-xl shadow-md grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <input type="text" placeholder="Search Name, Office, or Profession..." class="p-3 border rounded-lg lg:col-span-2 focus:ring-red-700 focus:border-red-700" />
+                        <select class="p-3 border rounded-lg focus:ring-red-700 focus:border-red-700">
+                            <option value="">Filter by Family</option>
+                            ${FAMILIES.map(f => `<option value="${f}">${f}</option>`).join('')}
+                        </select>
+                         <select class="p-3 border rounded-lg focus:ring-red-700 focus:border-red-700">
+                            <option value="">Filter by Set</option>
+                            ${allSets.map(set => `<option value="${set}">${set}</option>`).join('')}
+                        </select>
+                    </div>
+
+                    ${appState.userRole === 'Visitor' ? `
+                        <div class="bg-yellow-50 p-4 rounded-lg border-l-4 border-yellow-500 text-sm text-yellow-800 font-semibold">
+                            🔑 Restricted Access: You must be a registered <strong>Member</strong> or <strong>Admin</strong> to view full profiles and contact information.
+                        </div>
+                    ` : ''}
+                    
+                    ${appState.alumniMembers.length === 0 ? `
+                        <div class="p-10 text-center text-gray-500 bg-white rounded-xl shadow-lg">
+                            No alumni profiles found. Be the first to register!
+                        </div>
+                    ` : `
+                        <div class="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                            ${filteredMembers.map(AlumniMemberCard).join('')}
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+        
+        function MentorshipPage() { /* ... */
+            const mentors = appState.alumniMembers.filter(m => m.isMentor);
+            const MentorCard = (member) => {
+                const contactInfo = appState.userRole !== 'Visitor' ? 
+                    `<a href="https://wa.me/${member.whatsapp}" target="_blank" rel="noopener noreferrer">
+                        ${Button('Message on WhatsApp', 'console.log("Mock WhatsApp click")', 'bg-green-600', 'w-full text-sm py-2')}
+                    </a>` : 
+                    '<p class="text-xs text-center text-gray-500">Sign in to contact this member.</p>';
+                return `<div class="p-5 bg-white rounded-xl shadow-xl border-t-4 border-blue-800 flex flex-col justify-between"><div><h3 class="text-xl font-bold ${Colors.TextBlue}">${member.name}</h3><p class="text-sm ${Colors.AccentRed} font-semibold mb-2">${member.office || 'Alumnus/Alumna'}</p><div class="text-sm text-gray-600 space-y-1"><p>📍 ${member.school} (Set: ${member.set})</p><p>💼 ${member.profession}</p><span class="inline-block px-3 py-1 mt-1 text-xs font-semibold text-green-800 bg-green-200 rounded-full">✅ Available Mentor</span></div></div><div class="mt-4 pt-4 border-t border-gray-100">${contactInfo}</div></div>`;
+            };
+            
+            return `
+                <div class="max-w-6xl mx-auto space-y-12">
+                    ${SectionTitle('Mentorship & Career Guidance')}
+
+                    <div class="grid md:grid-cols-3 gap-6">
+                        ${Card(`
+                            <p class="text-gray-700">Current students can connect with experienced alumni professionals across various health and IT fields.</p>
+                            ${Button(appState.userRole === 'Visitor' ? 'Register to Connect' : 'Search Mentors Now', appState.userRole === 'Visitor' ? "setActivePage('Alumni Network')" : 'console.log("Searching Mentors")', Colors.Blue, 'w-full mt-3')}
+                        `, '🤝', 'Find a Mentor')}
+                        ${Card(`
+                            <p class="text-gray-700">Give back to the Calvary Love Family by guiding the next generation in their professional and spiritual journey.</p>
+                            ${Button('Update Profile to Mentor', "setActivePage('Alumni Network')", Colors.Red, 'w-full mt-3')}
+                        `, '💡', 'Be a Mentor')}
+                        ${Card(`
+                            <p class="text-gray-700">Read inspiring testimonies of successful mentorship partnerships and career breakthroughs.</p>
+                            ${Button('View Testimonies', 'console.log("Viewing Testimonies")', 'bg-gray-500', 'w-full mt-3')}
+                        `, '📈', 'Success Stories')}
+                    </div>
+                    
+                    ${SectionTitle('Available Mentors', '!text-3xl')}
+
+                    ${mentors.length === 0 ? `
+                        <div class="p-8 text-center bg-white rounded-xl shadow-lg">
+                            <p class="text-gray-500">No mentors currently registered. Be the first!</p>
+                        </div>
+                    ` : `
+                        <div class="grid md:grid-cols-3 gap-6">
+                            ${mentors.map(MentorCard).join('')}
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        // 5. Blog & News Page Content (ENHANCED FOR APPROVAL WORKFLOW)
+        function BlogNewsPage() {
+            const hasAdminPermissions = appState.userRole === 'Admin' || appState.userRole === 'SuperAdmin';
+            
+            const PostCard = (post, isDraft = false) => `
+                <div class="p-6 bg-white rounded-xl shadow-lg border-l-8 ${isDraft ? 'border-yellow-500' : 'border-red-700'}">
+                    <span class="text-xs font-medium text-white px-2 py-0.5 rounded-full bg-blue-600 inline-block mb-2">${post.category || 'Announcement'}</span>
+                    <h3 class="text-2xl font-bold ${Colors.TextBlue} mb-2">${post.title}</h3>
+                    ${isDraft ? `<p class="text-sm font-semibold text-yellow-700 mb-2">Awaiting Approval (Submitted by: ${post.author})</p>` : ''}
+                    <p class="text-gray-600 mb-4 line-clamp-3">${post.content}</p>
+                    
+                    <div class="flex justify-between items-center text-sm text-gray-500 pt-3 border-t border-gray-100">
+                        <div class="flex items-center space-x-4">
+                            <span>👤 ${post.author}</span>
+                            <span>📅 ${new Date(post.date?.seconds * 1000).toLocaleDateString()}</span>
+                        </div>
+                        
+                        <div class="flex space-x-2 items-center">
+                            ${!isDraft ? `<span class="text-red-700 font-semibold cursor-pointer" onclick="handleLike('${post.id}')">👍 Like (10)</span>` : ''}
+                            ${!isDraft ? `<a href="#" class="text-blue-500 hover:underline">Share</a>` : ''}
+                            
+                            ${isDraft && hasAdminPermissions ? `
+                                ${Button('Approve', `approvePost('${post.id}')`, 'bg-green-600', 'text-xs py-1 px-3')}
+                                ${Button('Delete', `deletePost('${post.id}', true)`, 'bg-gray-500', 'text-xs py-1 px-3')}
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const postForm = `
+                <div class="p-6 bg-red-50 rounded-xl shadow-inner border border-red-200">
+                    <h3 class="text-xl font-bold ${Colors.AccentRed} mb-3">${hasAdminPermissions ? 'Publish New Post' : 'Submit Post for Approval (Draft)'}</h3>
+                    <form onsubmit="handlePostSubmit(event); return false;" class="space-y-3">
+                        <div class="grid grid-cols-3 gap-3">
+                             <input type="text" id="postTitle" placeholder="Post Title" required class="p-3 border rounded-lg col-span-2 focus:ring-blue-500 focus:border-blue-500" />
+                             <select id="postCategory" required class="p-3 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">Select Category</option><option>Devotionals</option><option>Announcements</option><option>Testimonies</option><option>Alumni Updates</option>
+                            </select>
+                        </div>
+                        <textarea id="postContent" placeholder="Write your blog content here..." rows="5" required class="w-full p-3 border rounded-lg focus:ring-blue-500 focus:border-blue-500"></textarea>
+                        ${Button(hasAdminPermissions ? 'Publish Post' : 'Submit Draft', '', Colors.Blue, '', 'submit')}
+                    </form>
+                </div>
+            `;
+
+            const adminDraftsSection = `
+                <div class="mt-10">
+                    <h3 class="text-2xl font-bold ${Colors.AccentRed} mb-6 border-b-2 border-yellow-500 pb-1">Drafts Awaiting Approval (${appState.draftPosts.length})</h3>
+                    ${appState.draftPosts.length > 0 ? `
+                        <div class="space-y-6">
+                            ${appState.draftPosts.map(post => PostCard(post, true)).join('')}
+                        </div>
+                    ` : `
+                        <div class="p-8 text-center bg-yellow-100 rounded-xl shadow-md border-2 border-yellow-500">
+                            <p class="font-semibold text-yellow-800">🎉 No new drafts awaiting approval!</p>
+                        </div>
+                    `}
+                </div>
+            `;
+
+            return `
+                <div class="max-w-4xl mx-auto space-y-10">
+                    ${SectionTitle('Fellowship Blog & Updates')}
+                    
+                    ${appState.userRole !== 'Visitor' ? postForm : `
+                        <div class="bg-yellow-50 p-4 rounded-lg border-l-4 border-yellow-500 text-sm text-yellow-800 font-semibold">
+                            🔑 You must be signed in as a <strong>Member</strong>, <strong>Admin</strong>, or <strong>Super Admin</strong> to submit or manage posts.
+                        </div>
+                    `}
+                    
+                    ${hasAdminPermissions ? adminDraftsSection : ''}
+                    
+                    <h3 class="text-2xl font-bold ${Colors.TextBlue} mt-10 mb-6 border-b-2 border-red-700 pb-1">Public Posts</h3>
+                    <div class="space-y-6">
+                        ${appState.blogPosts.length > 0 ? appState.blogPosts.map(post => PostCard(post, false)).join('') : '<p>Loading public blog posts...</p>'}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 6. Admin Dashboard Page (NEW)
+        function AdminDashboardPage() {
+            if (appState.userRole === 'Visitor' || appState.userRole === 'Member') {
+                return `
+                    <div class="p-10 text-center bg-red-100 rounded-xl shadow-lg border-l-4 border-red-700">
+                        <h2 class="text-3xl font-bold text-red-700 mb-4">Access Denied</h2>
+                        <p class="text-gray-700">You must be an <strong>Admin</strong> or <strong>Super Admin</strong> to view this dashboard.</p>
+                        ${appState.userRole === 'Member' ? Button('Request Admin Status', 'requestAdminStatus()', Colors.Blue, 'mt-4') : ''}
+                    </div>
+                `;
+            }
+
+            const isSA = appState.userRole === 'SuperAdmin';
+            
+            const AdminRequestCard = (request) => {
+                const alumniProfile = appState.alumniMembers.find(a => a.id === request.userId);
+                const name = alumniProfile ? alumniProfile.name : `User ID: ${request.userId.substring(0, 8)}...`;
+                
+                return `
+                    <div class="p-4 bg-white rounded-lg shadow border-l-4 border-red-500 flex justify-between items-center">
+                        <div>
+                            <p class="font-semibold text-gray-800">${name} (${alumniProfile?.school || 'N/A'})</p>
+                            <p class="text-sm text-gray-500">Requested: ${new Date(request.date?.seconds * 1000).toLocaleDateString()}</p>
+                            <p class="text-xs text-red-500">UID: ${request.userId}</p>
+                        </div>
+                        ${isSA ? `
+                            <div class="flex space-x-2">
+                                ${Button('Approve Admin', `approveAdmin('${request.userId}')`, 'bg-green-600', 'text-xs py-1 px-3')}
+                                ${Button('Reject', `deleteAdminRequest('${request.userId}')`, 'bg-gray-500', 'text-xs py-1 px-3')}
+                            </div>
+                        ` : '<p class="text-sm text-yellow-700">Requires Super Admin Approval</p>'}
+                    </div>
+                `;
+            }
+            
+            return `
+                <div class="max-w-5xl mx-auto space-y-10">
+                    ${SectionTitle(`Admin Dashboard: ${appState.userRole}`)}
+                    
+                    ${isSA ? `
+                        <div class="bg-blue-50 p-6 rounded-xl shadow-md border-t-4 border-blue-800">
+                            <h3 class="text-2xl font-bold ${Colors.TextBlue} mb-4">Admin Promotion Requests (${appState.adminRequests.length})</h3>
+                            <p class="text-sm text-gray-700 mb-4">Only the Super Admin (${SuperAdminEmail}) can approve new Admins.</p>
+                            
+                            ${appState.adminRequests.length > 0 ? `
+                                <div class="space-y-4">
+                                    ${appState.adminRequests.map(AdminRequestCard).join('')}
+                                </div>
+                            ` : `
+                                <div class="p-5 text-center bg-white rounded-lg border border-gray-200">
+                                    No members are currently requesting Admin status.
+                                </div>
+                            `}
+                        </div>
+                    ` : `
+                        <div class="bg-yellow-50 p-6 rounded-xl shadow-md border-t-4 border-yellow-500">
+                            <h3 class="text-2xl font-bold text-yellow-800 mb-4">Admin Privileges</h3>
+                            <p class="text-gray-700">Your role allows you to approve new Blog Posts. Admin promotion requires Super Admin review.</p>
+                        </div>
+                    `}
+                    
+                    <!-- Quick Links to Admin Tasks -->
+                    <div class="grid md:grid-cols-2 gap-6">
+                        ${Card(Button('Review Blog Drafts', "setActivePage('Blog & News')", 'bg-red-700', 'w-full'), '✍️', 'Manage Blog Posts')}
+                        ${Card(Button('View All Alumni', "setActivePage('Alumni Network')", 'bg-blue-700', 'w-full'), '👥', 'View All Members')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // (EventsCalendarPage, DonationsPage, GalleryPage, StorePage, ContactUsPage remain the same)
+        function EventsCalendarPage() { /* ... content remains the same ... */ return `<div class="max-w-4xl mx-auto space-y-10">${SectionTitle('Annual Events & Fellowship Calendar')}<div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-800"><h3 class="text-xl font-bold ${Colors.TextBlue} mb-3">Upcoming Events in November</h3><div class="grid md:grid-cols-2 gap-6">${Card('Weekly Bible Study', '📚', 'Nov 3, 5:00 PM', 'border-red-700').replace('p-6 bg-white', 'p-4 bg-gray-50').replace('shadow-xl', 'shadow').replace('space-y-3', '').replace('border-t-4', 'border-l-4').replace('h3 class', 'h4 class="text-lg"').replace('div class', 'p class').replace('div class="p-6', 'div class="p-4').replace('class="text-xl', 'class="text-lg"')} ${Card('Hospital Ward Evangelism', '🏥', 'Nov 9, 2:00 PM', 'border-red-700').replace('p-6 bg-white', 'p-4 bg-gray-50').replace('shadow-xl', 'shadow').replace('space-y-3', '').replace('border-t-4', 'border-l-4').replace('h3 class', 'h4 class="text-lg"').replace('div class', 'p class').replace('div class="p-6', 'div class="p-4').replace('class="text-xl', 'class="text-lg"')} ${Card('Calvary Love Drama Night', '🎭', 'Nov 20, 6:00 PM', 'border-red-700').replace('p-6 bg-white', 'p-4 bg-gray-50').replace('shadow-xl', 'shadow').replace('space-y-3', '').replace('border-t-4', 'border-l-4').replace('h3 class', 'h4 class="text-lg"').replace('div class', 'p class').replace('div class="p-6', 'div class="p-4').replace('class="text-xl', 'class="text-lg"')}</div></div><div class="p-6 bg-red-50 rounded-xl shadow-inner border border-red-200 text-center"><h3 class="text-xl font-bold ${Colors.AccentRed} mb-3">Key Downloads</h3><p class="text-sm text-gray-600 mb-4">Access the fellowship constitution and historical leadership records.</p><div class="flex justify-center flex-wrap gap-4">${Button('🏛️ Fellowship Constitution (PDF)', 'console.log("Downloading Constitution")', Colors.Blue, 'text-sm py-2 px-4')}${Button('📜 Leadership Archive (1971-Present)', 'console.log("Viewing Archive")', Colors.Red, 'text-sm py-2 px-4')}</div></div></div>`;}
+        function DonationsPage() { /* ... */ return `<div class="max-w-2xl mx-auto space-y-8 text-center">${SectionTitle('Partner with UCHCF\'s Mission')}<p class="text-lg text-gray-700">Your financial partnership helps us fulfill our mandate: supporting evangelism, welfare, special projects, and maintaining our digital infrastructure.</p><div class="flex justify-center space-x-4 p-3 bg-white rounded-xl shadow-inner"><button class="flex-1 p-3 rounded-xl font-semibold transition ${Colors.Red} text-white shadow-md">One-Time Gift</button><button class="flex-1 p-3 rounded-xl font-semibold transition bg-gray-200 text-gray-700">Recurring Partner</button></div><div class="bg-white p-8 rounded-2xl shadow-2xl border ${Colors.BorderBlue} space-y-4"><h3 class="text-2xl font-bold ${Colors.AccentRed}">Secure Payment (Paystack Integration Mock)</h3><p class="text-sm text-gray-600">You are making a <strong>One-Time</strong> donation.</p><input type="number" placeholder="Amount (e.g., 5000 NGN)" class="w-full p-3 border rounded-lg focus:ring-blue-500 focus:border-blue-500" /><input type="email" placeholder="Email Address" class="w-full p-3 border rounded-lg focus:ring-blue-500 focus:border-blue-500" /><select class="w-full p-3 border rounded-lg focus:ring-blue-500 focus:border-blue-500"><option>Purpose: Welfare & Evangelism</option><option>Purpose: Digital Maintenance</option><option>Purpose: Alumni Events</option><option>Purpose: General Support</option></select>${Button('Proceed to Paystack Payment', 'console.log("Proceeding to payment")', Colors.Blue, 'w-full')}<p class="text-xs text-gray-500">Payments are securely processed via Paystack. No sensitive data is stored here.</p></div></div>`;}
+        function GalleryPage() { /* ... */ return `<div class="max-w-6xl mx-auto space-y-12">${SectionTitle('Photo & Video Gallery')}<p class="text-lg text-gray-700 max-w-3xl">Relive the moments of fellowship, outreach, and our annual special programs, including Retreats and Drama Nights.</p><h3 class="text-2xl font-bold ${Colors.AccentRed} mt-8">Recent Events: Annual Retreat 2024</h3><div class="grid md:grid-cols-3 gap-6">${Card('Worship Session', '📸', 'Photo').replace('aspect-square bg-gray-50', 'aspect-square bg-gray-300 flex items-center justify-center text-5xl text-gray-500').replace('p-4', 'p-3 bg-white border-t border-gray-100').replace('h4 class', 'p class').replace('font-bold', 'font-semibold text-sm').replace('text-gray-500 mt-2', 'text-xs text-gray-500')}${Card('Mentorship Panel', '📸', 'Photo').replace('aspect-square bg-gray-50', 'aspect-square bg-gray-300 flex items-center justify-center text-5xl text-gray-500').replace('p-4', 'p-3 bg-white border-t border-gray-100').replace('h4 class', 'p class').replace('font-bold', 'font-semibold text-sm').replace('text-gray-500 mt-2', 'text-xs text-gray-500')}${Card('Baptism Service', '📹', 'Video').replace('aspect-square bg-gray-50', 'aspect-square bg-gray-300 flex items-center justify-center text-5xl text-gray-500').replace('p-4', 'p-3 bg-white border-t border-gray-100').replace('h4 class', 'p class').replace('font-bold', 'font-semibold text-sm').replace('text-gray-500 mt-2', 'text-xs text-gray-500')}</div><h3 class="text-2xl font-bold ${Colors.AccentRed} mt-8">Calvary Love Family YouTube</h3><div class="bg-white p-6 rounded-xl shadow-lg"><div class="aspect-video bg-gray-300 flex items-center justify-center rounded-lg shadow-inner"><span class="text-gray-600 text-lg">▶️ YouTube Video Placeholder (Embed Link)</span></div><p class="text-center text-sm text-gray-500 mt-3">Watch our latest messages, worship sessions, and drama productions.</p></div></div>`;}
+        function StorePage() { /* ... */ return `<div class="max-w-6xl mx-auto space-y-12">${SectionTitle('Fellowship Store & Merchandise')}<p class="text-lg text-gray-700 max-w-3xl">Support the fellowship and wear the colors! Browse our branded apparel, books, and digital resources.</p><div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">${Card('UCHCF Branded Hoodie', '👕', '₦8,500').replace('aspect-square bg-gray-50', 'aspect-square bg-gray-50 flex flex-col items-center justify-center text-4xl text-gray-700').replace('p-4', 'p-4 bg-white').replace('h4 class', 'h4 class="font-bold text-blue-800"').replace('text-gray-500 mt-2', 'text-lg font-extrabold text-red-700 my-1')}${Card('Digital Devotional E-Book', '📖', '₦1,500').replace('aspect-square bg-gray-50', 'aspect-square bg-gray-50 flex flex-col items-center justify-center text-4xl text-gray-700').replace('p-4', 'p-4 bg-white').replace('h4 class', 'h4 class="font-bold text-blue-800"').replace('text-gray-500 mt-2', 'text-lg font-extrabold text-red-700 my-1')}${Card('Calvary Love Singers Album (MP3)', '🎵', '₦2,000').replace('aspect-square bg-gray-50', 'aspect-square bg-gray-50 flex flex-col items-center justify-center text-4xl text-gray-700').replace('p-4', 'p-4 bg-white').replace('h4 class', 'h4 class="font-bold text-blue-800"').replace('text-gray-500 mt-2', 'text-lg font-extrabold text-red-700 my-1')}${Card('Fellowship Cap', '🧢', '₦3,000').replace('aspect-square bg-gray-50', 'aspect-square bg-gray-50 flex flex-col items-center justify-center text-4xl text-gray-700').replace('p-4', 'p-4 bg-white').replace('h4 class', 'h4 class="font-bold text-blue-800"').replace('text-gray-500 mt-2', 'text-lg font-extrabold text-red-700 my-1')}</div><div class="bg-red-50 p-6 rounded-xl shadow-inner border border-red-200 text-center"><h3 class="text-xl font-bold ${Colors.AccentRed} mb-3">Secure Checkout</h3><p class="text-sm text-gray-600 mb-4">All purchases are processed securely via Paystack, supporting fellowship projects and initiatives.</p>${Button('View Cart & Checkout', 'console.log("Viewing checkout")', Colors.Blue)}</div></div>`;}
+        function ContactUsPage() { /* ... */ return `<div class="max-w-4xl mx-auto space-y-12">${SectionTitle('Get in Touch with Calvary Love Family')}<div class="grid md:grid-cols-2 gap-8">${Card(`<div class="space-y-3 text-sm text-gray-700"><p><strong>General Email:</strong> <a href="mailto:uchcf@uchchristianfellowship.org" class="text-blue-600 hover:underline">uchcf@uchchristianfellowship.org</a></p><p><strong>Website Administrator:</strong> Tiwo Samuel Adurayemi</p><p><strong>Phone:</strong> <a href="tel:+2348158576595" class="text-blue-600 hover:underline">+234 815 857 6595</a></p><p><strong>Location:</strong> UCH, Ibadan, Oyo State, Nigeria</p></div>`, '📞', 'Direct Contact Details', 'border-red-700')}<div class="p-6 bg-white rounded-xl shadow-xl border-t-4 border-blue-800"><h3 class="text-xl font-bold ${Colors.TextBlue} mb-4">Send us a Message</h3><form onsubmit="handleContactSubmit(event); return false;" class="space-y-3"><input type="text" name="name" placeholder="Your Full Name" required class="w-full p-3 border rounded-lg focus:ring-red-500 focus:border-red-500" /><input type="email" name="email" placeholder="Your Email" required class="w-full p-3 border rounded-lg focus:ring-red-500 focus:border-red-500" /><select name="subject" required class="w-full p-3 border rounded-lg focus:ring-red-500 focus:border-red-500"><option value="">Select Subject</option><option>General Inquiry</option><option>Mentorship Question</option><option>Donation Inquiry</option><option>Website Feedback</option></select><textarea name="message" rows="4" placeholder="Your Message" required class="w-full p-3 border rounded-lg focus:ring-red-500 focus:border-red-500"></textarea>${Button('Submit Message', '', Colors.Red, 'w-full', 'submit')}</form></div></div></div>`;}
+
+
+        // 7. Login / Register Page Content (ENHANCED for Super Admin)
+        function LoginRegisterPage() {
+            const loginForm = `
+                <form onsubmit="handleLogin(event); return false;" class="space-y-4">
+                    <input type="email" id="loginEmail" placeholder="Email Address" required class="w-full p-3 border rounded-lg focus:ring-red-500 focus:border-red-500" />
+                    <input type="password" id="loginPassword" placeholder="Password (Any value for mock)" required class="w-full p-3 border rounded-lg focus:ring-red-500 focus:border-red-500" />
+                    ${Button('Sign In', '', Colors.Blue, 'w-full', 'submit')}
+                    <p class="text-center text-xs text-gray-500">Super Admin Login: use <strong>${SuperAdminEmail}</strong> (or any other email for Member access).</p>
+                </form>
+            `;
+            const registerForm = `
+                <form onsubmit="handleRegister(event); return false;" class="space-y-4">
+                    <input type="text" id="registerName" placeholder="Full Name" required class="w-full p-3 border rounded-lg focus:ring-red-500 focus:border-red-500" />
+                    <input type="email" id="registerEmail" placeholder="Email Address" required class="w-full p-3 border rounded-lg focus:ring-red-500 focus:border-red-500" />
+                    <input type="password" id="registerPassword" placeholder="Create Password (Any value for mock)" required class="w-full p-3 border rounded-lg focus:ring-red-500 focus:border-red-500" />
+                    <select id="registerFamily" required class="w-full p-3 border rounded-lg focus:ring-red-500 focus:border-red-500">
+                        <option value="">Select Your UCH Institution/Family</option>
+                        ${FAMILIES.map(f => `<option value="${f}">${f}</option>`).join('')}
+                    </select>
+                    ${Button('Register (Mocked)', '', Colors.Red, 'w-full', 'submit')}
+                    <p class="text-center text-xs text-gray-500 font-semibold">Registration is instant for testing purposes.</p>
+                </form>
+            `;
+
+            const dashboardView = `
+                <div class="p-8 bg-blue-50 rounded-2xl shadow-2xl border-t-4 border-blue-800 text-center space-y-4">
+                    <h3 class="text-2xl font-bold ${Colors.TextBlue}">Welcome, ${appState.userRole}!</h3>
+                    <p class="text-gray-700">Your User ID: <code class="bg-gray-200 p-1 rounded text-xs">${appState.userId}</code></p>
+                    
+                    ${appState.userRole !== 'Visitor' && appState.userRole !== 'SuperAdmin' ? 
+                        Button('Request Admin Status', 'requestAdminStatus()', Colors.Red, 'mt-4') : ''
+                    }
+                    
+                    ${appState.userRole === 'SuperAdmin' || appState.userRole === 'Admin' ? 
+                        Button('Go to Admin Dashboard', "setActivePage('Admin Dashboard')", 'bg-green-600', 'mt-4') : ''
+                    }
+                    
+                    ${Button('Sign Out', 'signOutUser()', 'bg-gray-500', 'w-full mt-6')}
+                </div>
+            `;
+
+            return `
+                <div class="max-w-xl mx-auto space-y-12">
+                    ${SectionTitle('Member Access')}
+
+                    ${appState.userRole === 'Visitor' ? `
+                        <div class="bg-white p-8 rounded-2xl shadow-2xl border-t-4 border-blue-800">
+                            <div class="flex justify-center mb-6 border-b border-gray-200">
+                                <button id="login-tab" onclick="document.getElementById('login-content').style.display='block'; document.getElementById('register-content').style.display='none'; this.className='py-2 px-6 font-semibold transition ${Colors.AccentRed} border-b-2 border-red-700'; document.getElementById('register-tab').className='py-2 px-6 font-semibold transition text-gray-500';">
+                                    Login
+                                </button>
+                                <button id="register-tab" onclick="document.getElementById('login-content').style.display='none'; document.getElementById('register-content').style.display='block'; this.className='py-2 px-6 font-semibold transition ${Colors.AccentRed} border-b-2 border-red-700'; document.getElementById('login-tab').className='py-2 px-6 font-semibold transition text-gray-500';" class="py-2 px-6 font-semibold transition text-gray-500">
+                                    Register
+                                </button>
+                            </div>
+                            
+                            <div id="login-content" class="login-tab-content">${loginForm}</div>
+                            <div id="register-content" class="login-tab-content" style="display:none;">${registerForm}</div>
+                        </div>
+                    ` : dashboardView}
+                </div>
+            `;
+        }
+
+
+        // --- MAIN RENDERING FUNCTIONS ---
+
+        function renderContent() {
+            const contentDiv = document.getElementById('main-content');
+            let contentHTML = '';
+
+            switch (appState.activePage) {
+                case 'Home': contentHTML = HomePage(); break;
+                case 'About Us': contentHTML = AboutUsPage(); break;
+                case 'Alumni Network': contentHTML = AlumniDirectoryPage(); break;
+                case 'Mentorship': contentHTML = MentorshipPage(); break;
+                case 'Blog & News': contentHTML = BlogNewsPage(); break;
+                case 'Events Calendar': contentHTML = EventsCalendarPage(); break;
+                case 'Admin Dashboard': contentHTML = AdminDashboardPage(); break; // New Page
+                case 'Donations': contentHTML = DonationsPage(); break;
+                case 'Gallery': contentHTML = GalleryPage(); break;
+                case 'Store': contentHTML = StorePage(); break;
+                case 'Contact Us': contentHTML = ContactUsPage(); break;
+                case 'Login / Register': contentHTML = LoginRegisterPage(); break;
+                default: contentHTML = HomePage();
+            }
+            contentDiv.innerHTML = contentHTML;
+        }
+
+        function renderHeader() {
+            const NavigationItems = [
+                { name: 'Home' }, { name: 'About Us' }, { name: 'Alumni Network' },
+                { name: 'Mentorship' }, { name: 'Blog & News' }, { name: 'Events Calendar' },
+                { name: 'Donations' }, 
+                // Add Admin Dashboard if authorized
+                ...(appState.userRole === 'Admin' || appState.userRole === 'SuperAdmin' ? [{ name: 'Admin Dashboard' }] : []),
+                { name: 'Gallery' }, { name: 'Store' },
+                { name: 'Contact Us' }, 
+            ];
+
+            const navLinks = NavigationItems.map(item => `
+                <button
+                    onclick="setActivePage('${item.name}')"
+                    class="px-3 py-2 rounded-lg text-sm font-medium transition duration-150
+                    ${appState.activePage === item.name ? 'bg-red-700 text-white' : 'text-white hover:bg-red-600 hover:text-white'}"
+                >
+                    ${item.name}
+                </button>
+            `).join('');
+
+            const mobileNavLinks = NavigationItems.map(item => `
+                <button
+                    onclick="setActivePage('${item.name}')"
+                    class="flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition duration-150
+                    ${appState.activePage === item.name ? 'bg-white text-blue-800 font-bold' : 'text-white hover:bg-red-600'}"
+                >
+                    ${item.name}
+                </button>
+            `).join('');
+
+
+            const headerHTML = `
+                <div class="${Colors.Blue} shadow-xl">
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div class="flex justify-between items-center py-4">
+                            <!-- Logo & Identity -->
+                            <div class="flex items-center space-x-3 cursor-pointer" onclick="setActivePage('Home')">
+                                <div class="text-3xl text-white">🕊️</div>
+                                <span class="text-xl font-extrabold text-white tracking-tight hidden sm:block">UCHCF</span>
+                                <span class="text-sm font-light text-white opacity-80 hidden md:block">Calvary Love Family</span>
+                            </div>
+
+                            <!-- Navigation (Desktop) -->
+                            <nav class="hidden lg:flex space-x-3">${navLinks}</nav>
+
+                            <!-- User Status / Login Button (Desktop) -->
+                            <div class="flex items-center space-x-3">
+                                <div class="text-white text-sm hidden md:block">
+                                    ${appState.isAuthReady ? `
+                                        <span class="font-bold">${appState.userRole}</span>
+                                        <div class="text-xs opacity-70">ID: ${appState.userId ? appState.userId.substring(0, 8) + '...' : 'N/A'}</div>
+                                    ` : 'Connecting...'}
+                                </div>
+                                ${Button(
+                                    appState.userRole === 'Visitor' ? 'Login / Join' : 'Dashboard',
+                                    "setActivePage('Login / Register')",
+                                    appState.activePage === 'Login / Register' ? Colors.Red : 'bg-red-500',
+                                    'text-xs py-2 px-3'
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Mobile Navigation -->
+                    <div class="lg:hidden border-t border-red-800 p-2 overflow-x-auto">
+                        <nav class="flex space-x-3 justify-start">${mobileNavLinks}</nav>
+                    </div>
+                </div>
+            `;
+            document.getElementById('header-container').innerHTML = headerHTML;
+        }
+
+        function renderFooter() {
+             const footerHTML = `
+                <div class="${Colors.Blue} text-white">
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                        <p class="text-lg font-bold">UCHCF | Calvary Love Family</p>
+                        <p class="text-sm mt-2 opacity-80">
+                            "Building the House Unto Maturity" — Founded 1971.
+                        </p>
+                        <div class="flex justify-center space-x-4 mt-4 text-2xl">
+                            <a href="https://wa.me/2348158576595" target="_blank" rel="noopener noreferrer" class="text-white hover:text-red-300">📱</a>
+                            <a href="#" class="text-white hover:text-red-300">📘</a>
+                            <a href="#" class="text-white hover:text-red-300">📸</a>
+                        </div>
+                        <p class="text-xs mt-6 opacity-50">
+                            Super Admin: ${SuperAdminEmail} | Powered by TiwotheProducer
+                        </p>
+                    </div>
+                </div>
+            `;
+            document.getElementById('footer-container').innerHTML = footerHTML;
+        }
+
+
+        // --- FIREBASE INITIALIZATION AND LISTENERS ---
+
+        async function initFirebase() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                appState.db = getFirestore(app);
+                appState.auth = getAuth(app);
+
+                // 1. Authentication Setup
+                onAuthStateChanged(appState.auth, async (user) => {
+                    let userRole = 'Visitor';
+                    
+                    if (user) {
+                        appState.userId = user.uid;
+                        
+                        // A. Check for Super Admin
+                        if (user.email === SuperAdminEmail) {
+                            userRole = 'SuperAdmin';
+                        } else if (!user.isAnonymous) {
+                            // B. Check for Admin status (from Firestore roles collection)
+                            const isAdmin = appState.adminList.includes(user.uid);
+                            if (isAdmin) {
+                                userRole = 'Admin';
+                            } else {
+                                // C. Default to Member
+                                userRole = 'Member';
+                            }
+                        }
+                    } else {
+                        // Initial sign-in logic (Anonymous)
+                        try {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(appState.auth, initialAuthToken);
+                            } else {
+                                await signInAnonymously(appState.auth);
+                            }
+                        } catch (authError) {
+                             console.error("Initial Auth Failed. Retrying Anonymously:", authError);
+                             await signInAnonymously(appState.auth); // Ensure we sign in anonymously even if token fails
+                        }
+                    }
+                    
+                    appState.userRole = userRole;
+                    appState.isAuthReady = true;
+                    
+                    // Start listening for data and render the full app
+                    listenForRoles();
+                    listenForAdminRequests();
+                    listenForBlogPosts();
+                    listenForDraftPosts();
+                    listenForAlumni();
+                });
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                appState.isAuthReady = true;
+                renderApp(); 
+            }
+        }
+        
+        // Listener for UIDs explicitly granted 'Admin' role
+        function listenForRoles() {
+            if (!appState.db) return;
+            const rolesRef = collection(appState.db, `artifacts/${appId}/public/data/uchcf_roles`);
+            onSnapshot(rolesRef, (snapshot) => {
+                // Extracts UIDs that have the role 'Admin'
+                appState.adminList = snapshot.docs
+                    .filter(doc => doc.data().role === 'Admin')
+                    .map(doc => doc.id); // Firestore ID is the UID
+                
+                // Re-evaluate role in case the user was just promoted
+                const user = appState.auth?.currentUser;
+                if (user && user.email !== SuperAdminEmail) {
+                     if (appState.adminList.includes(user.uid)) {
+                        appState.userRole = 'Admin';
+                     } else if (appState.userRole === 'Admin' && !appState.adminList.includes(user.uid)) {
+                        appState.userRole = 'Member'; // Demoted
+                     }
+                }
+                
+                renderApp();
+            }, (error) => {
+                console.error("Error fetching roles:", error);
+            });
+        }
+        
+        // Listener for pending Admin promotion requests
+        function listenForAdminRequests() {
+            if (!appState.db) return;
+            const requestsRef = collection(appState.db, `artifacts/${appId}/public/data/uchcf_admin_requests`);
+            onSnapshot(requestsRef, (snapshot) => {
+                appState.adminRequests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderApp();
+            }, (error) => {
+                console.error("Error fetching admin requests:", error);
+            });
+        }
+
+        // Listener for APPROVED public blog posts
+        function listenForBlogPosts() {
+            if (!appState.db) return;
+            const postsRef = collection(appState.db, `artifacts/${appId}/public/data/uchcf_posts`);
+            onSnapshot(postsRef, (snapshot) => {
+                const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                posts.sort((a, b) => (b.date?.seconds || 0) - (a.date?.seconds || 0));
+                appState.blogPosts = posts;
+                renderApp();
+            }, (error) => {
+                console.error("Error fetching public blog posts:", error);
+            });
+        }
+        
+        // Listener for UNAPPROVED draft posts
+        function listenForDraftPosts() {
+            if (!appState.db) return;
+            const draftsRef = collection(appState.db, `artifacts/${appId}/public/data/uchcf_draft_posts`);
+            onSnapshot(draftsRef, (snapshot) => {
+                const drafts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                drafts.sort((a, b) => (b.date?.seconds || 0) - (a.date?.seconds || 0));
+                appState.draftPosts = drafts;
+                renderApp();
+            }, (error) => {
+                console.error("Error fetching draft posts:", error);
+            });
+        }
+        
+        // Listener for ALUMNI profiles (Approved members who registered their data)
+        function listenForAlumni() {
+            if (!appState.db) return;
+            const alumniRef = collection(appState.db, `artifacts/${appId}/public/data/uchcf_alumni`);
+            onSnapshot(alumniRef, (snapshot) => {
+                const alumni = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                alumni.sort((a, b) => (b.set || 0) - (a.set || 0)); // Sort by set year
+                appState.alumniMembers = alumni;
+                renderApp();
+            }, (error) => {
+                console.error("Error fetching alumni:", error);
+            });
+        }
+
+        // --- HANDLER FUNCTIONS ---
+
+        window.handleLogin = function(event) {
+            event.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            // Mock Auth Logic - In a real app, you'd use signInWithEmailAndPassword
+            if (email === SuperAdminEmail) {
+                 // The onAuthStateChanged listener will set the role
+                 // For mock login, we assume this signs in a user with this specific email
+                 setUserRole('SuperAdmin');
+                 setActivePage('Home');
+                 alert('Signed in as SUPER ADMIN!');
+            } else if (email.includes('@')) {
+                 setUserRole('Member');
+                 setActivePage('Home');
+                 alert('Signed in as Member (Mocked)!');
+            } else {
+                 alert('Invalid credentials (Mocked).');
+            }
+        }
+
+        window.handleRegister = function(event) {
+            event.preventDefault();
+            console.log("Member Registration submitted (Mocked).");
+            alert('Registration submitted! You are now a Member. Proceed to Alumni Network to register your profile.');
+            setActivePage('Login / Register'); 
+        }
+
+        // BLOG POST SUBMISSION (Used by Member (Draft) and Admin/SA (Direct Publish))
+        window.handlePostSubmit = async function(event) {
+            event.preventDefault();
+            const hasAdminPermissions = appState.userRole === 'Admin' || appState.userRole === 'SuperAdmin';
+
+            if (appState.userRole === 'Visitor' || !appState.db) {
+                alert('You must be a Member or Admin to submit a post.');
+                return;
+            }
+
+            const title = document.getElementById('postTitle').value;
+            const content = document.getElementById('postContent').value;
+            const category = document.getElementById('postCategory').value;
+            // Attempt to get the member's name from alumni data, otherwise use a placeholder
+            const alumniProfile = appState.alumniMembers.find(a => a.id === appState.userId);
+            const authorName = alumniProfile ? alumniProfile.name : `User ID: ${appState.userId.substring(0, 8)}`;
+            
+            const postData = {
+                title: title,
+                content: content,
+                author: authorName, 
+                userId: appState.userId,
+                date: serverTimestamp(),
+                category: category,
+            };
+            
+            const targetCollection = hasAdminPermissions ? 'uchcf_posts' : 'uchcf_draft_posts';
+
+            try {
+                const targetRef = collection(appState.db, `artifacts/${appId}/public/data/${targetCollection}`);
+                await addDoc(targetRef, postData);
+                alert(hasAdminPermissions ? "Post published successfully to the main blog!" : "Draft submitted for Admin approval!");
+                event.target.reset();
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                alert("Failed to submit post: Check console for error.");
+            }
+        };
+        
+        // ADMIN/SUPER ADMIN HANDLERS (Blog Approval)
+        window.approvePost = async function(postId) {
+            const hasAdminPermissions = appState.userRole === 'Admin' || appState.userRole === 'SuperAdmin';
+            if (!hasAdminPermissions || !appState.db) {
+                alert('Permission denied. Only Admins/Super Admins can approve posts.');
+                return;
+            }
+
+            const draft = appState.draftPosts.find(d => d.id === postId);
+            if (!draft) return;
+            
+            try {
+                await runTransaction(appState.db, async (transaction) => {
+                    const draftDocRef = doc(appState.db, `artifacts/${appId}/public/data/uchcf_draft_posts`, postId);
+                    const publicRef = collection(appState.db, `artifacts/${appId}/public/data/uchcf_posts`);
+                    
+                    // 1. Add to public collection
+                    const { id, ...dataToPublish } = draft;
+                    await addDoc(publicRef, dataToPublish);
+
+                    // 2. Delete from draft collection
+                    transaction.delete(draftDocRef);
+                });
+                alert(`Post "${draft.title}" approved and published!`);
+            } catch (e) {
+                console.error("Transaction failed:", e);
+                alert('Approval failed: Check console for error.');
+            }
+        }
+        
+        window.deletePost = async function(postId, isDraft) {
+             const hasAdminPermissions = appState.userRole === 'Admin' || appState.userRole === 'SuperAdmin';
+            if (!hasAdminPermissions || !appState.db) {
+                alert('Permission denied.');
+                return;
+            }
+            
+            const collectionName = isDraft ? 'uchcf_draft_posts' : 'uchcf_posts';
+            const confirmation = isDraft ? 'permanently delete this draft?' : 'permanently delete this public post?';
+
+            // NOTE: Using console.log instead of window.confirm for iframe compatibility, but typically this needs a custom modal.
+            console.log(`Attempting to ${confirmation}`); 
+            
+            try {
+                const docRef = doc(appState.db, `artifacts/${appId}/public/data/${collectionName}`, postId);
+                await deleteDoc(docRef);
+                alert(`Post deleted successfully from ${isDraft ? 'drafts' : 'public posts'}.`);
+            } catch (e) {
+                console.error("Error deleting document: ", e);
+                alert("Deletion failed: Check console for error.");
+            }
+        }
+
+        window.handleLike = function(postId) {
+            if (appState.userRole === 'Visitor') {
+                alert("Please sign in to like posts.");
+                return;
+            }
+            // Mock functionality for liking a post
+            console.log(`User ${appState.userId} liked post ${postId}`);
+            alert('Post liked! (Mock functionality)');
+        }
+        
+        // --- ADMIN PROMOTION WORKFLOW ---
+        
+        // 1. Member requests Admin status
+        window.requestAdminStatus = async function() {
+            if (appState.userRole !== 'Member' || !appState.db) {
+                alert('Only standard Members can request Admin status.');
+                return;
+            }
+            
+            // Check if already requested
+            const existingRequest = appState.adminRequests.find(r => r.userId === appState.userId);
+            if (existingRequest) {
+                alert('You have already submitted an Admin request. Please wait for Super Admin approval.');
+                return;
+            }
+            
+            const alumniProfile = appState.alumniMembers.find(a => a.id === appState.userId);
+            const userName = alumniProfile ? alumniProfile.name : `User ID: ${appState.userId.substring(0, 8)}`;
+
+            try {
+                const requestsRef = collection(appState.db, `artifacts/${appId}/public/data/uchcf_admin_requests`);
+                await setDoc(doc(requestsRef, appState.userId), {
+                    userId: appState.userId,
+                    name: userName,
+                    date: serverTimestamp(),
+                });
+                alert('Admin request submitted successfully! The Super Admin will review your application.');
+                setActivePage('Admin Dashboard');
+            } catch (e) {
+                console.error("Error submitting request: ", e);
+                alert('Failed to submit request: Check console.');
+            }
+        }
+        
+        // 2. Super Admin approves Admin status
+        window.approveAdmin = async function(userId) {
+            if (appState.userRole !== 'SuperAdmin' || !appState.db) {
+                alert('Permission denied. Only the Super Admin can approve Admin promotion.');
+                return;
+            }
+            
+            try {
+                await runTransaction(appState.db, async (transaction) => {
+                    // a. Add to uchcf_roles collection
+                    const rolesRef = doc(appState.db, `artifacts/${appId}/public/data/uchcf_roles`, userId);
+                    transaction.set(rolesRef, { role: 'Admin', approvedBy: appState.userId, approvedAt: serverTimestamp() });
+                    
+                    // b. Remove from uchcf_admin_requests collection
+                    const requestDocRef = doc(appState.db, `artifacts/${appId}/public/data/uchcf_admin_requests`, userId);
+                    transaction.delete(requestDocRef);
+                });
+                alert(`User ${userId.substring(0, 8)} promoted to Admin successfully!`);
+            } catch (e) {
+                console.error("Admin promotion failed:", e);
+                alert('Promotion failed: Check console for error.');
+            }
+        }
+        
+        // 3. Super Admin rejects/deletes Admin request
+        window.deleteAdminRequest = async function(userId) {
+            if (appState.userRole !== 'SuperAdmin' || !appState.db) {
+                alert('Permission denied. Only the Super Admin can delete Admin requests.');
+                return;
+            }
+            
+            try {
+                const requestDocRef = doc(appState.db, `artifacts/${appId}/public/data/uchcf_admin_requests`, userId);
+                await deleteDoc(requestDocRef);
+                alert(`Admin request for ${userId.substring(0, 8)} deleted.`);
+            } catch (e) {
+                 console.error("Error deleting request: ", e);
+                 alert('Deletion failed: Check console for error.');
+            }
+        }
+        
+        // ALUMNI SELF-REGISTRATION (Same as before, open to all authenticated users)
+        window.handleAlumniRegistration = async function(event) {
+            event.preventDefault();
+             if (appState.userRole === 'Visitor' || !appState.db) {
+                alert('You must be a signed-in Member or Admin to register your profile.');
+                return;
+            }
+            
+            const name = document.getElementById('alumniName').value;
+            const school = document.getElementById('alumniSchool').value;
+            const profession = document.getElementById('alumniProfession').value;
+            const set = parseInt(document.getElementById('alumniSet').value, 10);
+            const whatsapp = document.getElementById('alumniWhatsapp').value;
+            const isMentor = document.getElementById('isMentor').checked;
+
+            if (isNaN(set) || set < 1970 || set > new Date().getFullYear()) {
+                 alert('Please enter a valid graduation set year.');
+                 return;
+            }
+            
+            const profileData = {
+                id: appState.userId, // Use Firebase UID as the unique ID
+                name: name,
+                school: school,
+                office: 'Alumnus/Alumna',
+                profession: profession,
+                set: set,
+                whatsapp: whatsapp,
+                isMentor: isMentor,
+                bio: `Profile registered on ${new Date().toLocaleDateString()}.`,
+                registeredAt: serverTimestamp(),
+            };
+            
+            try {
+                // Use setDoc with the UID to ensure each user only has one profile
+                const docRef = doc(appState.db, `artifacts/${appId}/public/data/uchcf_alumni`, appState.userId);
+                await setDoc(docRef, profileData);
+                
+                alert(`Welcome, ${name}! Your alumni profile has been registered and is now visible.`);
+                event.target.reset();
+            } catch (e) {
+                 console.error("Error registering alumni profile: ", e);
+                 alert('Failed to register profile: Check console for error.');
+            }
+        }
+
+
+        // --- Initial Application Load ---
+        initFirebase();
+    </script>
+</body>
+</html>
